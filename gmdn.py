@@ -4,6 +4,8 @@ import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_geometric_temporal.dataset import EnglandCovidDatasetLoader
 from torch_geometric_temporal.signal import temporal_signal_split
+from sklearn.linear_model import LinearRegression
+import numpy as np
 
 # MDN Head
 class MDNHead(nn.Module):
@@ -78,3 +80,14 @@ X_all = torch.cat([snap.x for snap in train_dataset], dim=0)
 y_all = torch.cat([snap.y for snap in train_dataset], dim=0)
 x_mean, x_std = X_all.mean(0), X_all.std(0) + 1e-6
 y_mean, y_std = y_all.mean(), y_all.std() + 1e-6
+
+# Train Linear Regression on normalized data
+X_lr, y_lr = [], []
+for snap in train_dataset:
+    x = (snap.x - x_mean) / x_std
+    X_lr.append(x[:, :-1].numpy())
+    y = (snap.y - y_mean) / y_std
+    y_lr.append(y.numpy())
+X_lr = np.vstack(X_lr)
+y_lr = np.concatenate(y_lr)
+lr_model = LinearRegression().fit(X_lr, y_lr)
