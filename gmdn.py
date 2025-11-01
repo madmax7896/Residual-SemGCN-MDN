@@ -80,6 +80,7 @@ train_dataset = list(train_dataset)
 test_dataset = list(test_dataset)
 
 model = SemGCN_MDN(in_features=25, hidden_dim=64, num_layers=3, num_gaussians=12)
+optimizer = torch.optim.AdamW(model.parameters(), lr=0.0003, weight_decay=1e-4)
 
 # Compute normalization stats
 X_all = torch.cat([snap.x for snap in train_dataset], dim=0)
@@ -123,6 +124,7 @@ for epoch in range(epochs):
         time_index = torch.full((x.size(0), 1), fill_value=step / total_snapshots)
         x = torch.cat([x, time_index], dim=1)
 
+        optimizer.zero_grad()
         pi, mu, sigma = model(x, edge_index)
         expected_residual = (pi * mu.squeeze(-1)).sum(dim=1)
 
@@ -130,6 +132,7 @@ for epoch in range(epochs):
         mdn_loss_val = mdn_loss(residual, pi, mu, sigma)
         loss = mdn_loss_val + kl_weight * kl_divergence(pi)
         loss.backward()
+	optimizer.step()
         total_loss += loss.item()
 
     print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss:.4f}")
