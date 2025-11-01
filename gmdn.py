@@ -82,6 +82,7 @@ test_dataset = list(test_dataset)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = SemGCN_MDN(in_features=25, hidden_dim=64, num_layers=3, num_gaussians=12).to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=0.0003, weight_decay=1e-4)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=20, T_mult=2)
 
 # Compute normalization stats
 X_all = torch.cat([snap.x for snap in train_dataset], dim=0)
@@ -137,6 +138,7 @@ for epoch in range(epochs):
 	optimizer.step()
         total_loss += loss.item()
 
+    scheduler.step(epoch + step / total_snapshots)
     print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss:.4f}")
 
     if total_loss < best_loss:
