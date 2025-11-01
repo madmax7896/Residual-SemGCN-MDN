@@ -7,7 +7,7 @@ from torch_geometric_temporal.signal import temporal_signal_split
 from sklearn.linear_model import LinearRegression
 import numpy as np
 
-# MDN Head
+# ===== Model Components =====
 class MDNHead(nn.Module):
     def __init__(self, input_dim, output_dim=1, num_gaussians=12):
         super().__init__()
@@ -24,7 +24,6 @@ class MDNHead(nn.Module):
         sigma = torch.exp(self.sigma(x)).view(-1, self.num_gaussians, self.output_dim) + self.min_sigma
         return pi, mu, sigma
 
-# SemGCN Layer
 class SemGCNLayer(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
@@ -42,7 +41,6 @@ class SemGCNLayer(nn.Module):
         x = self.dropout(x)
         return x + res
 
-# Full Model
 class SemGCN_MDN(nn.Module):
     def __init__(self, in_features, hidden_dim, num_layers, num_gaussians):
         super().__init__()
@@ -59,7 +57,7 @@ class SemGCN_MDN(nn.Module):
         x = self.norm_out(x)
         return self.mdn(x)
 
-# Loss functions
+# ===== Loss Functions =====
 def mdn_loss(y, pi, mu, sigma):
     y = y.view(y.size(0), 1, 1).expand_as(mu)
     m = torch.distributions.Normal(loc=mu, scale=sigma)
@@ -81,7 +79,8 @@ train_dataset, test_dataset = temporal_signal_split(dataset, train_ratio=0.8)
 train_dataset = list(train_dataset)
 test_dataset = list(test_dataset)
 
-model = SemGCN_MDN(in_features=25, hidden_dim=64, num_layers=3, num_gaussians=12)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = SemGCN_MDN(in_features=25, hidden_dim=64, num_layers=3, num_gaussians=12).to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=0.0003, weight_decay=1e-4)
 
 # Compute normalization stats
@@ -111,19 +110,19 @@ for epoch in range(epochs):
     model.train()
     total_loss = 0
     for step, snapshot in enumerate(train_dataset):
-        x = snapshot.x.float()
-        y = snapshot.y.float()
-        edge_index = snapshot.edge_index
+        x = snapshot.x.to(device).float()
+        y = snapshot.y.to(device).float()
+        edge_index = snapshot.edge_index.to(device)
 
-        x = (x - x_mean) / x_std
+        x = (x - x_mean.to(device)) / x_std.to(device)
         y = (y - y_mean) / y_std
 
         with torch.no_grad():
             x_lr_input = x[:, :-1].cpu().numpy()
-            linear_pred = torch.tensor(lr_model.predict(x_lr_input))
+            linear_pred = torch.tensor(lr_model.predict(x_lr_input), device=device)
             residual = y - linear_pred
 
-        time_index = torch.full((x.size(0), 1), fill_value=step / total_snapshots)
+        time_index = torch.full((x.size(0), 1), fill_value=step / total_snapshots, device=device)
         x = torch.cat([x, time_index], dim=1)
 
         optimizer.zero_grad()
