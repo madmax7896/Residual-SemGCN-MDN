@@ -68,6 +68,10 @@ def mdn_loss(y, pi, mu, sigma):
     log_sum = torch.logsumexp(weighted_log_prob, dim=1)
     return -log_sum.mean()
 
+def kl_divergence(pi):
+    uniform = torch.full_like(pi, 1.0 / pi.size(1))
+    return F.kl_div(pi.log(), uniform, reduction='batchmean')
+
 # ===== Dataset and Normalization =====
 loader = EnglandCovidDatasetLoader()
 dataset = loader.get_dataset(lags=24)
@@ -122,8 +126,9 @@ for epoch in range(epochs):
         pi, mu, sigma = model(x, edge_index)
         expected_residual = (pi * mu.squeeze(-1)).sum(dim=1)
 
+        kl_weight = min(epoch / 100, 1.0) * 0.01
         mdn_loss_val = mdn_loss(residual, pi, mu, sigma)
-        loss = mdn_loss_val
+        loss = mdn_loss_val + kl_weight * kl_divergence(pi)
         loss.backward()
         total_loss += loss.item()
 
