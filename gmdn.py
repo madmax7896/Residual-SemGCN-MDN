@@ -72,6 +72,8 @@ def kl_divergence(pi):
     uniform = torch.full_like(pi, 1.0 / pi.size(1))
     return F.kl_div(pi.log(), uniform, reduction='batchmean')
 
+huber_loss_fn = nn.SmoothL1Loss()
+
 # ===== Dataset and Normalization =====
 loader = EnglandCovidDatasetLoader()
 dataset = loader.get_dataset(lags=24)
@@ -130,7 +132,8 @@ for epoch in range(epochs):
 
         kl_weight = min(epoch / 100, 1.0) * 0.01
         mdn_loss_val = mdn_loss(residual, pi, mu, sigma)
-        loss = mdn_loss_val + kl_weight * kl_divergence(pi)
+        huber_loss_val = huber_loss_fn(expected_residual, residual)
+        loss = mdn_loss_val + huber_loss_val + kl_weight * kl_divergence(pi)
         loss.backward()
 	optimizer.step()
         total_loss += loss.item()
