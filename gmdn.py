@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
+from torch_geometric_temporal.dataset import EnglandCovidDatasetLoader
+from torch_geometric_temporal.signal import temporal_signal_split
 
 # MDN Head
 class MDNHead(nn.Module):
@@ -64,3 +66,15 @@ def mdn_loss(y, pi, mu, sigma):
     log_sum = torch.logsumexp(weighted_log_prob, dim=1)
     return -log_sum.mean()
 
+# ===== Dataset and Normalization =====
+loader = EnglandCovidDatasetLoader()
+dataset = loader.get_dataset(lags=24)
+train_dataset, test_dataset = temporal_signal_split(dataset, train_ratio=0.8)
+train_dataset = list(train_dataset)
+test_dataset = list(test_dataset)
+
+# Compute normalization stats
+X_all = torch.cat([snap.x for snap in train_dataset], dim=0)
+y_all = torch.cat([snap.y for snap in train_dataset], dim=0)
+x_mean, x_std = X_all.mean(0), X_all.std(0) + 1e-6
+y_mean, y_std = y_all.mean(), y_all.std() + 1e-6
