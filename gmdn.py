@@ -75,6 +75,8 @@ train_dataset, test_dataset = temporal_signal_split(dataset, train_ratio=0.8)
 train_dataset = list(train_dataset)
 test_dataset = list(test_dataset)
 
+model = SemGCN_MDN(in_features=25, hidden_dim=64, num_layers=3, num_gaussians=12)
+
 # Compute normalization stats
 X_all = torch.cat([snap.x for snap in train_dataset], dim=0)
 y_all = torch.cat([snap.y for snap in train_dataset], dim=0)
@@ -91,3 +93,48 @@ for snap in train_dataset:
 X_lr = np.vstack(X_lr)
 y_lr = np.concatenate(y_lr)
 lr_model = LinearRegression().fit(X_lr, y_lr)
+
+# ===== Training Loop =====
+best_loss = float('inf')
+patience, trigger = 30, 0
+epochs = 300
+
+total_snapshots = len(train_dataset)
+for epoch in range(epochs):
+    model.train()
+    total_loss = 0
+    for step, snapshot in enumerate(train_dataset):
+        x = snapshot.x.float()
+        y = snapshot.y.float()
+        edge_index = snapshot.edge_index
+
+        x = (x - x_mean) / x_std
+        y = (y - y_mean) / y_std
+
+        with torch.no_grad():
+            x_lr_input = x[:, :-1].cpu().numpy()
+            linear_pred = torch.tensor(lr_model.predict(x_lr_input))
+            residual = y - linear_pred
+
+        time_index = torch.full((x.size(0), 1), fill_value=step / total_snapshots)
+        x = torch.cat([x, time_index], dim=1)
+
+        pi, mu, sigma = model(x, edge_index)
+        expected_residual = (pi * mu.squeeze(-1)).sum(dim=1)
+
+        mdn_loss_val = mdn_loss(residual, pi, mu, sigma)
+        loss = mdn_loss_val
+        loss.backward()
+        total_loss += loss.item()
+
+    print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss:.4f}")
+
+    if total_loss < best_loss:
+        best_loss = total_loss
+        trigger = 0
+        torch.save(model.state_dict(), "best_residual_semgcn_mdn_covid.pt")
+    else:
+        trigger += 1
+        if trigger >= patience:
+            print("Early stopping triggered.")
+            break
